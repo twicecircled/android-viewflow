@@ -75,6 +75,9 @@ public class ViewFlow extends AdapterView<Adapter> {
 	private FlowIndicator mIndicator;
 	private int mLastOrientation = -1;
 
+	// ADDED
+	private FriendlyScrollView parentScrollView;
+
 	private OnGlobalLayoutListener orientationChangeListener = new OnGlobalLayoutListener() {
 
 		@Override
@@ -96,7 +99,8 @@ public class ViewFlow extends AdapterView<Adapter> {
 		 * @param view
 		 *            the {@link View} currently in focus.
 		 * @param position
-		 *            The position in the adapter of the {@link View} currently in focus.
+		 *            The position in the adapter of the {@link View} currently
+		 *            in focus.
 		 */
 		void onSwitched(View view, int position);
 
@@ -143,7 +147,8 @@ public class ViewFlow extends AdapterView<Adapter> {
 	public void onConfigurationChanged(Configuration newConfig) {
 		if (newConfig.orientation != mLastOrientation) {
 			mLastOrientation = newConfig.orientation;
-			getViewTreeObserver().addOnGlobalLayoutListener(orientationChangeListener);
+			getViewTreeObserver().addOnGlobalLayoutListener(
+					orientationChangeListener);
 		}
 	}
 
@@ -154,7 +159,7 @@ public class ViewFlow extends AdapterView<Adapter> {
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-		
+
 		final int width = MeasureSpec.getSize(widthMeasureSpec);
 		final int widthMode = MeasureSpec.getMode(widthMeasureSpec);
 		if (widthMode != MeasureSpec.EXACTLY && !isInEditMode()) {
@@ -198,100 +203,18 @@ public class ViewFlow extends AdapterView<Adapter> {
 
 	@Override
 	public boolean onInterceptTouchEvent(MotionEvent ev) {
-		if (getChildCount() == 0)
-			return false;
-
-		if (mVelocityTracker == null) {
-			mVelocityTracker = VelocityTracker.obtain();
-		}
-		mVelocityTracker.addMovement(ev);
-
-		final int action = ev.getAction();
-		final float x = ev.getX();
-
-		switch (action) {
-		case MotionEvent.ACTION_DOWN:
-			/*
-			 * If being flinged and user touches, stop the fling. isFinished
-			 * will be false if being flinged.
-			 */
-			if (!mScroller.isFinished()) {
-				mScroller.abortAnimation();
-			}
-
-			// Remember where the motion event started
-			mLastMotionX = x;
-
-			mTouchState = mScroller.isFinished() ? TOUCH_STATE_REST
-					: TOUCH_STATE_SCROLLING;
-
-			break;
-
-		case MotionEvent.ACTION_MOVE:
-			final int deltaX = (int) (mLastMotionX - x);
-
-			boolean xMoved = Math.abs(deltaX) > mTouchSlop;
-
-			if (xMoved) {
-				// Scroll if the user moved far enough along the X axis
-				mTouchState = TOUCH_STATE_SCROLLING;
-
-				if (mViewInitializeListener != null)
-					initializeView(deltaX);
-			}
-
-			if (mTouchState == TOUCH_STATE_SCROLLING) {
-				// Scroll to follow the motion event
-
-				mLastMotionX = x;
-
-				final int scrollX = getScrollX();
-				if (deltaX < 0) {
-					if (scrollX > 0) {
-						scrollBy(Math.max(-scrollX, deltaX), 0);
-					}
-				} else if (deltaX > 0) {
-					final int availableToScroll = getChildAt(
-							getChildCount() - 1).getRight()
-							- scrollX - getWidth();
-					if (availableToScroll > 0) {
-						scrollBy(Math.min(availableToScroll, deltaX), 0);
-					}
-				}
-				return true;
-			}
-			break;
-
-		case MotionEvent.ACTION_UP:
-			if (mTouchState == TOUCH_STATE_SCROLLING) {
-				final VelocityTracker velocityTracker = mVelocityTracker;
-				velocityTracker.computeCurrentVelocity(1000, mMaximumVelocity);
-				int velocityX = (int) velocityTracker.getXVelocity();
-
-				if (velocityX > SNAP_VELOCITY && mCurrentScreen > 0) {
-					// Fling hard enough to move left
-					snapToScreen(mCurrentScreen - 1);
-				} else if (velocityX < -SNAP_VELOCITY
-						&& mCurrentScreen < getChildCount() - 1) {
-					// Fling hard enough to move right
-					snapToScreen(mCurrentScreen + 1);
-				} else {
-					snapToDestination();
-				}
-
-				if (mVelocityTracker != null) {
-					mVelocityTracker.recycle();
-					mVelocityTracker = null;
-				}
-			}
-
-			mTouchState = TOUCH_STATE_REST;
-
-			break;
-		case MotionEvent.ACTION_CANCEL:
-			mTouchState = TOUCH_STATE_REST;
-		}
-		return false;
+		/*
+		 * onInterceptTouchEvent Javadoc: Return true to steal motion events
+		 * from the children and have them dispatched to this ViewGroup through
+		 * onTouchEvent(). The current target will receive an ACTION_CANCEL
+		 * event, and no further messages will be delivered here.
+		 * 
+		 * IE no need to repeat code in onTouchEvent - otherwise you are
+		 * carrying out the code twice.
+		 */
+		Log.d("ViewFlow",
+				"onInterceptTouchEvent - intercepting touch event, not handing to child view.");
+		return true;
 	}
 
 	@Override
@@ -323,6 +246,14 @@ public class ViewFlow extends AdapterView<Adapter> {
 			mTouchState = mScroller.isFinished() ? TOUCH_STATE_REST
 					: TOUCH_STATE_SCROLLING;
 
+			if (mScroller.isFinished()) {
+				if (parentScrollView != null)
+					parentScrollView.enableVerticalScrolled();
+			} else {
+				if (parentScrollView != null)
+					parentScrollView.disableVerticalScrolled();
+			}
+
 			break;
 
 		case MotionEvent.ACTION_MOVE:
@@ -333,6 +264,8 @@ public class ViewFlow extends AdapterView<Adapter> {
 			if (xMoved) {
 				// Scroll if the user moved far enough along the X axis
 				mTouchState = TOUCH_STATE_SCROLLING;
+				if (parentScrollView != null)
+					parentScrollView.disableVerticalScrolled();
 
 				if (mViewInitializeListener != null)
 					initializeView(deltaX);
@@ -381,14 +314,25 @@ public class ViewFlow extends AdapterView<Adapter> {
 					mVelocityTracker.recycle();
 					mVelocityTracker = null;
 				}
+			} else if (mTouchState == TOUCH_STATE_REST) {
+				// ACTION_UP while mTouchState -- TOUCH_STATE_REST is either a
+				// 'tap' or a 'longpress'.
+
+				// Call onItemClickListener (if defined)
+				performItemClick(null, mCurrentAdapterIndex,
+						mAdapter.getItemId(mCurrentAdapterIndex));
 			}
 
 			mTouchState = TOUCH_STATE_REST;
+			if (parentScrollView != null)
+				parentScrollView.enableVerticalScrolled();
 
 			break;
 		case MotionEvent.ACTION_CANCEL:
 			snapToDestination();
 			mTouchState = TOUCH_STATE_REST;
+			if (parentScrollView != null)
+				parentScrollView.enableVerticalScrolled();
 		}
 		return true;
 	}
@@ -397,14 +341,18 @@ public class ViewFlow extends AdapterView<Adapter> {
 		if (direction > 0) {
 			if (mLazyInit.contains(LazyInit.RIGHT)) {
 				mLazyInit.remove(LazyInit.RIGHT);
-				if (mCurrentBufferIndex+1 < mLoadedViews.size())
-					mViewInitializeListener.onViewLazyInitialize(mLoadedViews.get(mCurrentBufferIndex + 1), mCurrentAdapterIndex + 1);
+				if (mCurrentBufferIndex + 1 < mLoadedViews.size())
+					mViewInitializeListener.onViewLazyInitialize(
+							mLoadedViews.get(mCurrentBufferIndex + 1),
+							mCurrentAdapterIndex + 1);
 			}
 		} else {
 			if (mLazyInit.contains(LazyInit.LEFT)) {
 				mLazyInit.remove(LazyInit.LEFT);
 				if (mCurrentBufferIndex > 0)
-					mViewInitializeListener.onViewLazyInitialize(mLoadedViews.get(mCurrentBufferIndex - 1), mCurrentAdapterIndex - 1);
+					mViewInitializeListener.onViewLazyInitialize(
+							mLoadedViews.get(mCurrentBufferIndex - 1),
+							mCurrentAdapterIndex - 1);
 			}
 		}
 	}
@@ -472,8 +420,9 @@ public class ViewFlow extends AdapterView<Adapter> {
 		int dx = (mCurrentScreen * getWidth()) - mScroller.getCurrX();
 		mScroller.startScroll(mScroller.getCurrX(), mScroller.getCurrY(), dx,
 				0, 0);
-		if(dx == 0)
-			onScrollChanged(mScroller.getCurrX() + dx, mScroller.getCurrY(), mScroller.getCurrX() + dx, mScroller.getCurrY());
+		if (dx == 0)
+			onScrollChanged(mScroller.getCurrX() + dx, mScroller.getCurrY(),
+					mScroller.getCurrX() + dx, mScroller.getCurrY());
 		if (uiThread)
 			invalidate();
 		else
@@ -504,7 +453,7 @@ public class ViewFlow extends AdapterView<Adapter> {
 	public void setAdapter(Adapter adapter) {
 		setAdapter(adapter, 0);
 	}
-	
+
 	public void setAdapter(Adapter adapter, int initialPosition) {
 		if (mAdapter != null) {
 			mAdapter.unregisterDataSetObserver(mDataSetObserver);
@@ -519,20 +468,20 @@ public class ViewFlow extends AdapterView<Adapter> {
 		}
 		if (mAdapter == null || mAdapter.getCount() == 0)
 			return;
-		
-		setSelection(initialPosition);		
+
+		setSelection(initialPosition);
 	}
-	
+
 	@Override
 	public View getSelectedView() {
 		return (mCurrentBufferIndex < mLoadedViews.size() ? mLoadedViews
 				.get(mCurrentBufferIndex) : null);
 	}
 
-    @Override
-    public int getSelectedItemPosition() {
-        return mCurrentAdapterIndex;
-    }
+	@Override
+	public int getSelectedItemPosition() {
+		return mCurrentAdapterIndex;
+	}
 
 	/**
 	 * Set the FlowIndicator
@@ -542,6 +491,16 @@ public class ViewFlow extends AdapterView<Adapter> {
 	public void setFlowIndicator(FlowIndicator flowIndicator) {
 		mIndicator = flowIndicator;
 		mIndicator.setViewFlow(this);
+	}
+
+	/**
+	 * Set the ParentScrollView so that vertical scrolling is disabled while
+	 * ViewFlow is scrolling horizontally.
+	 * 
+	 * @param friendlyScrollView
+	 */
+	public void setParentScrollView(FriendlyScrollView parentScrollView) {
+		this.parentScrollView = parentScrollView;
 	}
 
 	protected void recycleViews() {
@@ -566,9 +525,9 @@ public class ViewFlow extends AdapterView<Adapter> {
 		mScroller.forceFinished(true);
 		if (mAdapter == null)
 			return;
-		
+
 		position = Math.max(position, 0);
-		position = Math.min(position, mAdapter.getCount()-1);
+		position = Math.min(position, mAdapter.getCount() - 1);
 
 		recycleViews();
 
@@ -578,12 +537,12 @@ public class ViewFlow extends AdapterView<Adapter> {
 		if (mViewInitializeListener != null)
 			mViewInitializeListener.onViewLazyInitialize(currentView, position);
 
-		for(int offset = 1; mSideBuffer - offset >= 0; offset++) {
+		for (int offset = 1; mSideBuffer - offset >= 0; offset++) {
 			int leftIndex = position - offset;
 			int rightIndex = position + offset;
-			if(leftIndex >= 0)
+			if (leftIndex >= 0)
 				mLoadedViews.addFirst(makeAndAddView(leftIndex, false));
-			if(rightIndex < mAdapter.getCount())
+			if (rightIndex < mAdapter.getCount())
 				mLoadedViews.addLast(makeAndAddView(rightIndex, true));
 		}
 
@@ -613,7 +572,8 @@ public class ViewFlow extends AdapterView<Adapter> {
 			if (i == mCurrentAdapterIndex) {
 				mCurrentBufferIndex = mLoadedViews.size() - 1;
 				if (mViewInitializeListener != null)
-					mViewInitializeListener.onViewLazyInitialize(mLoadedViews.getLast(), mCurrentAdapterIndex);
+					mViewInitializeListener.onViewLazyInitialize(
+							mLoadedViews.getLast(), mCurrentAdapterIndex);
 			}
 		}
 		logBuffer();
@@ -696,7 +656,7 @@ public class ViewFlow extends AdapterView<Adapter> {
 
 	private View makeAndAddView(int position, boolean addToEnd, View convertView) {
 		View view = mAdapter.getView(position, convertView, this);
-		if(view != convertView)
+		if (view != convertView)
 			mRecycledViews.add(convertView);
 		return setupChild(view, addToEnd, view == convertView);
 	}
@@ -726,9 +686,11 @@ public class ViewFlow extends AdapterView<Adapter> {
 
 	private void logBuffer() {
 
-		Log.d("viewflow", "Size of mLoadedViews: " + mLoadedViews.size() +
-				", Size of mRecycledViews: " + mRecycledViews.size() +
-				", X: " + mScroller.getCurrX() + ", Y: " + mScroller.getCurrY());
+		Log.d("viewflow",
+				"Size of mLoadedViews: " + mLoadedViews.size()
+						+ ", Size of mRecycledViews: " + mRecycledViews.size()
+						+ ", X: " + mScroller.getCurrX() + ", Y: "
+						+ mScroller.getCurrY());
 		Log.d("viewflow", "IndexInAdapter: " + mCurrentAdapterIndex
 				+ ", IndexInBuffer: " + mCurrentBufferIndex);
 	}
