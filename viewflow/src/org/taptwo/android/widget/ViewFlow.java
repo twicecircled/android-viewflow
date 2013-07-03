@@ -116,7 +116,7 @@ public class ViewFlow extends AdapterView<Adapter> {
 
 	public ViewFlow(Context context) {
 		super(context);
-		mSideBuffer = 3;
+		mSideBuffer = 2;
 		init();
 	}
 
@@ -130,7 +130,8 @@ public class ViewFlow extends AdapterView<Adapter> {
 		super(context, attrs);
 		TypedArray styledAttrs = context.obtainStyledAttributes(attrs,
 				R.styleable.ViewFlow);
-		mSideBuffer = styledAttrs.getInt(R.styleable.ViewFlow_sidebuffer, 3);
+		mSideBuffer = styledAttrs.getInt(R.styleable.ViewFlow_sidebuffer, 2);
+		styledAttrs.recycle();
 		init();
 	}
 
@@ -301,11 +302,11 @@ public class ViewFlow extends AdapterView<Adapter> {
 
 				if (velocityX > SNAP_VELOCITY && mCurrentScreen > 0) {
 					// Fling hard enough to move left
-					snapToScreen(mCurrentScreen - 1);
+					snapToScreen(mCurrentScreen - 1,2);
 				} else if (velocityX < -SNAP_VELOCITY
 						&& mCurrentScreen < getChildCount() - 1) {
 					// Fling hard enough to move right
-					snapToScreen(mCurrentScreen + 1);
+					snapToScreen(mCurrentScreen + 1,2);
 				} else {
 					snapToDestination();
 				}
@@ -377,10 +378,10 @@ public class ViewFlow extends AdapterView<Adapter> {
 		final int whichScreen = (getScrollX() + (screenWidth / 2))
 				/ screenWidth;
 
-		snapToScreen(whichScreen);
+		snapToScreen(whichScreen,2);
 	}
 
-	private void snapToScreen(int whichScreen) {
+	private void snapToScreen(int whichScreen, int durationMultiplier) {
 		mLastScrollDirection = whichScreen - mCurrentScreen;
 		if (!mScroller.isFinished())
 			return;
@@ -391,7 +392,7 @@ public class ViewFlow extends AdapterView<Adapter> {
 
 		final int newX = whichScreen * getWidth();
 		final int delta = newX - getScrollX();
-		mScroller.startScroll(getScrollX(), 0, delta, 0, Math.abs(delta) * 2);
+		mScroller.startScroll(getScrollX(), 0, delta, 0, Math.abs(delta) * durationMultiplier);
 		invalidate();
 	}
 
@@ -693,5 +694,30 @@ public class ViewFlow extends AdapterView<Adapter> {
 						+ mScroller.getCurrY());
 		Log.d("viewflow", "IndexInAdapter: " + mCurrentAdapterIndex
 				+ ", IndexInBuffer: " + mCurrentBufferIndex);
+	}
+
+	public void flingRight() {
+		fling(1);
+	}
+
+	public void flingLeft() {
+		fling(-1);
+	}
+
+	private void fling(int amount) {
+		if (!mScroller.isFinished()) {
+			// Finish current scroll
+			mScroller.abortAnimation();
+			computeScroll();
+			computeScroll();
+		}
+		snapToScreen(mCurrentScreen + amount,1);
+		if (mVelocityTracker != null) {
+			mVelocityTracker.recycle();
+			mVelocityTracker = null;
+		}
+		mTouchState = TOUCH_STATE_REST;
+		if (parentScrollView != null)
+			parentScrollView.enableVerticalScrolled();
 	}
 }
